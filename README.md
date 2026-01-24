@@ -14,5 +14,5 @@ docker container run -itd --name my-golang golang-hands-on
 
 ```shell
 echo 'export PATH=$PATH:/usr/local/go/bin' >> .bash_profile
-source $HOME/ .bash_profile
+source .bash_profile
 ```
