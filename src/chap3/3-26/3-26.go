@@ -13,6 +13,6 @@ func hello(s string, n int) {
 }
 
 func main() {
-	go hello("hello", 50) // go routine を用いて、直下のhello()とは別スレッドで実行する
+	go hello("hello", 50) // goroutine を用いて、直下のhello()とは別スレッドで実行する
 	hello("bye!", 100)
 }
