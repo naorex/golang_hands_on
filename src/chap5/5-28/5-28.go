@@ -2,12 +2,16 @@ package main
 
 import (
 	"database/sql"
+	"io/ioutil"
+	"os"
 	"strconv"
 
+	"fyne.io/fyne"
 	"fyne.io/fyne/app"
 	"fyne.io/fyne/dialog"
 	"fyne.io/fyne/v2/widget"
 	"fyne.io/fyne/widget"
+	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/PuerkitoBio/goquery"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -135,6 +139,123 @@ func main() {
 
 	// save function
 	sf := func() {
+		dialog.ShowConfirm("Alert", "Save data ?", func(f bool) {
+			if f {
+				con := setDB()
+				if con == nil {
+					return
+				}
+				defer con.Close()
 
+				qry := "INSERT INTO md_data (title, url, markdown) VALUES (?, ?, ?)"
+				_, er := con.Exec(qry, w.Title(), fnd.Text, edit.Text)
+				if err(er) {
+					return
+				}
+				showInfo("Save data to database !")
+			}
+		}, w)
+	}
+
+	// export data function
+	xf := func() {
+		dialog.ShowConfirm("Alert", "Export this data ?", func(f bool) {
+			if f {
+				fn := w.Title() + ".md"
+				ctt := "# " + w.TItle() + "\n\n"
+				ctt += "## " + fnd.Text + "\n\n"
+				ctt += edit.Text
+				er := ioutil.WriteFile(fn,
+				[]byte(ctt),
+			os.ModePerm)
+			if err(er) {
+				return
+			}
+			showInfo("Export data to file \"" + fn + "\".")
+			}
+		}, w)
+	}
+
+	// quit function
+	qf := func() {
+		dialog.ShowConfirm("Alert", "Quit application ?", func(f bool) {
+			if f {
+				a.Quit()
+			}
+		}, w)
+	}
+
+	tf := true
+
+	// change theme function
+	cf := func() {
+		if tf {
+			a.Settings().SetTheme(theme.LightTheme())
+			inf.SetText("change to Light-Theme.")
+		} else {
+			a.Settings().SetTheme(theme.DarkTheme())
+			inf.SetText("change to Dark-Theme.")
+		}
+		tf := !tf
+	}
+
+	// create button function
+	cbtn := widget.NewButton("Clear", func() {
+		nf()
+	})
+	wbtn := widget.NewButton("Get Web", func() {
+		wf()
+	})
+	fbtn := widget.NewButton("Find data", func() {
+		ff()
+	})
+	ibtn := widget.NewButton("Get ID data", func() {
+		rid, er := strconv.Atoi(fnd.Text)
+		if err(er) {
+			return
+		}
+		idf(rid)
+	})
+	sbtn := widget.NewButton("Save data", func() {
+		sf()
+	})
+	xbtn := widget.NewButton("Export data", func() {
+		xf()
+	})
+
+	// create menubar function
+	createMenuBar := func() *fyne.MainMenu {
+		return fyne.NewMainMenu(
+			fyne.NewMenu("File",
+				fyne.NewMenuItem("New", func() {
+					nf()
+				}),
+				fyne.NewMenuItem("Get Web", func() {
+					wf()
+				}),
+				fyne.NewMenuItem("Find", func() {
+					ff()
+				}),
+				fyne.NewMenuItem("Save", func() {
+					sf()
+				}),
+				fyne.NewMenuItem("Export", func() {
+					xf()
+				}),
+				fyne.NewMenuItem("Change Theme", func() {
+					cf()
+				}),
+				fyne.NewMenuItem("Quit", func() {
+					qf()
+				}),
+		  ),
+			fyne.NewMenu("Edit",
+				fyne.NewMenuItem("Cut", func() {
+					edit.TypedShortcut(&fyne.ShortcutCut{
+						Clipboard: w.Clipboard()})
+					inf.SetText("Cut text.")
+				}),
+			)
+		)
 	}
 }
