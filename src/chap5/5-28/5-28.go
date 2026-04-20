@@ -255,7 +255,32 @@ func main() {
 						Clipboard: w.Clipboard()})
 					inf.SetText("Cut text.")
 				}),
-			)
+				fyne.NewMenuItem("Copy", func() {
+					edit.TypedShortcut(
+						&fyne.ShortcutCopy{
+							Clipboard: w.Clipboard()})
+					inf.SetText("Copy text.")
+				}),
+				fyne.NewMenuItem("Paste", func() {
+					edit.TypedShortcut(&fyne.ShortcutPaste{
+						Clipboard: w.Clipboard()})
+					inf.SetText("Paste text.")
+				}),
+			),
+		)
+	}
+
+	// create toolbar function
+	createToolBar := func() *widget.Toolbar {
+		return widget.NewToolbar(
+			widget.NewToolbarAction(
+				theme.DocumentCreateIcon(), func() {
+					nf()
+				}),
+			widget.NewToolbarAction(
+				theme.NavigationNextIcon(), func() {
+					wf()
+				}),
 		)
 	}
 }
