@@ -2,15 +2,19 @@ package main
 
 import (
 	"database/sql"
-	"io/ioutil"
+	"fmt"
+	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
-	"fyne.io/fyne"
-	"fyne.io/fyne/app"
-	"fyne.io/fyne/dialog"
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"fyne.io/fyne/widget"
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/PuerkitoBio/goquery"
 	_ "github.com/mattn/go-sqlite3"
@@ -18,21 +22,21 @@ import (
 
 func main() {
 	a := app.New()
-	w := a.NewWindow("app")
-	a.Settings().SetTheme(theme.DartTheme())
-	edit := widget.NewMultiLineEntry()
-	sc := widget.NewScrollContainer(edit)
-	fnd := widget.NewEntry()
-	inf := widget.NewLabel("information bar.")
+	w := a.NewWindow("Markdown Gatherer")
 
-	// show alert
+	edit := widget.NewMultiLineEntry()
+	sc := container.NewScroll(edit)
+	fnd := widget.NewEntry()
+	inf := widget.NewLabel("Information bar.")
+
+	// --- Helper Functions ---
+
 	showInfo := func(s string) {
 		inf.SetText(s)
-		dialog.ShowInformation("info", s, w)
+		dialog.ShowInformation("Info", s, w)
 	}
 
-	// error check
-	err := func(er error) bool {
+	checkError := func(er error) bool {
 		if er != nil {
 			inf.SetText(er.Error())
 			return true
@@ -40,18 +44,18 @@ func main() {
 		return false
 	}
 
-	// open sql and return db
 	setDB := func() *sql.DB {
-		con, er := sql.Open("sqlite3", "../data.sqlite3")
-		if err(er) {
+		con, er := sql.Open("sqlite3", "./data.sqlite3") // パスをカレントに変更
+		if checkError(er) {
 			return nil
 		}
 		return con
 	}
 
- 	// set new from function
+	// --- Action Functions ---
+
 	nf := func() {
-		dialog.ShowConfirm("Alert", "Clear form ?", func(f bool) {
+		dialog.ShowConfirm("Alert", "Clear form?", func(f bool) {
 			if f {
 				fnd.SetText("")
 				w.SetTitle("App")
@@ -61,85 +65,96 @@ func main() {
 		}, w)
 	}
 
-	// get web data function
 	wf := func() {
-		fstr := fnd.SetText
-		if !string.HasPrefix(fstr, "http") {
-			fstr = "http://" + fstr
+		fstr := fnd.Text
+		if fstr == "" {
+			return
+		}
+		if !strings.HasPrefix(fstr, "http") {
+			fstr = "https://" + fstr
 			fnd.SetText(fstr)
 		}
-		dc, er := goquery.NewDocument(fstr)
-		if err(er) {
+
+		// http.Get を使用してドキュメントを取得
+		res, er := http.Get(fstr)
+		if checkError(er) {
 			return
 		}
-		ttl := dc.Find("title")
-		w.SetTitle(ttl.Text())
+		defer res.Body.Close()
+
+		dc, er := goquery.NewDocumentFromReader(res.Body)
+		if checkError(er) {
+			return
+		}
+
+		ttl := dc.Find("title").Text()
+		w.SetTitle(ttl)
+
 		html, er := dc.Html()
-		if err(er) {
+		if checkError(er) {
 			return
 		}
+
 		cvtr := md.NewConverter("", true, nil)
 		mkdn, er := cvtr.ConvertString(html)
-		if err(er) {
+		if checkError(er) {
 			return
 		}
 		edit.SetText(mkdn)
-		inf.SetText("get web data.")
+		inf.SetText("Get web data success.")
 	}
 
-	// find data function
 	ff := func() {
-		var qry string = "SELECT * FROM md_data WHERE title LIKE ?"
+		qry := "SELECT id, title FROM md_data WHERE title LIKE ?"
 		con := setDB()
 		if con == nil {
 			return
 		}
 		defer con.Close()
 
-		rs, er := con.Query(qry, "%" + fnd.Text + "%")
-		if err(er) {
+		rs, er := con.Query(qry, "%"+fnd.Text+"%")
+		if checkError(er) {
 			return
 		}
-		res := ""
+		defer rs.Close()
+
+		resText := ""
 		for rs.Next() {
-			var ID int
-			var TT string
-			var UR string
-			var MR string
-			er := rs.Scan(&ID, &TT, &UR, &MR)
-			if err(er) {
+			var id int
+			var title string
+			er := rs.Scan(&id, &title)
+			if checkError(er) {
 				return
 			}
-			res *= strconv.Itoa(ID) + ":" + TT + "\n"
+			resText += fmt.Sprintf("%d: %s\n", id, title)
 		}
-		edit.SetText(res)
-		inf.SetText("Find:" + fnd.Text)
+		edit.SetText(resText)
+		inf.SetText("Find: " + fnd.Text)
 	}
 
-	// find by id function
 	idf := func(id int) {
-		var qry string = "SELECT * FROM md_data WHERE id = ?"
+		qry := "SELECT id, title, url, markdown FROM md_data WHERE id = ?"
 		con := setDB()
 		if con == nil {
 			return
 		}
 		defer con.Close()
-		rs := con.QueryRow(qry, id)
 
 		var ID int
-		var TT string
-		var UR string
-		var MR string
-		rs.Scan(&ID, &TT, &UR, &MR)
+		var TT, UR, MR string
+		er := con.QueryRow(qry, id).Scan(&ID, &TT, &UR, &MR)
+		if checkError(er) {
+			return
+		}
+
 		w.SetTitle(TT)
 		fnd.SetText(UR)
 		edit.SetText(MR)
-		inf.SetText("Find id=" + strconv.Itoa(ID) + ".")
+		inf.SetText("Found ID=" + strconv.Itoa(ID))
 	}
 
-	// save function
 	sf := func() {
-		dialog.ShowConfirm("Alert", "Save data ?", func(f bool) {
+		dialog.ShowConfirm("Alert", "Save data?", func(f bool) {
 			if f {
 				con := setDB()
 				if con == nil {
@@ -149,138 +164,89 @@ func main() {
 
 				qry := "INSERT INTO md_data (title, url, markdown) VALUES (?, ?, ?)"
 				_, er := con.Exec(qry, w.Title(), fnd.Text, edit.Text)
-				if err(er) {
+				if checkError(er) {
 					return
 				}
-				showInfo("Save data to database !")
+				showInfo("Saved to database!")
 			}
 		}, w)
 	}
 
-	// export data function
 	xf := func() {
-		dialog.ShowConfirm("Alert", "Export this data ?", func(f bool) {
+		dialog.ShowConfirm("Alert", "Export this data?", func(f bool) {
 			if f {
 				fn := w.Title() + ".md"
-				ctt := "# " + w.TItle() + "\n\n"
+				ctt := "# " + w.Title() + "\n\n"
 				ctt += "## " + fnd.Text + "\n\n"
 				ctt += edit.Text
-				er := ioutil.WriteFile(fn,
-				[]byte(ctt),
-			os.ModePerm)
-			if err(er) {
-				return
-			}
-			showInfo("Export data to file \"" + fn + "\".")
+				er := os.WriteFile(fn, []byte(ctt), 0644)
+				if checkError(er) {
+					return
+				}
+				showInfo("Exported to " + fn)
 			}
 		}, w)
 	}
 
-	// quit function
-	qf := func() {
-		dialog.ShowConfirm("Alert", "Quit application ?", func(f bool) {
-			if f {
-				a.Quit()
-			}
-		}, w)
-	}
-
-	tf := true
-
-	// change theme function
+	// --- Theme Toggle ---
+	isDark := true
 	cf := func() {
-		if tf {
+		if isDark {
 			a.Settings().SetTheme(theme.LightTheme())
-			inf.SetText("change to Light-Theme.")
+			inf.SetText("Changed to Light Theme")
 		} else {
 			a.Settings().SetTheme(theme.DarkTheme())
-			inf.SetText("change to Dark-Theme.")
+			inf.SetText("Changed to Dark Theme")
 		}
-		tf := !tf
+		isDark = !isDark
 	}
 
-	// create button function
-	cbtn := widget.NewButton("Clear", func() {
-		nf()
-	})
-	wbtn := widget.NewButton("Get Web", func() {
-		wf()
-	})
-	fbtn := widget.NewButton("Find data", func() {
-		ff()
-	})
-	ibtn := widget.NewButton("Get ID data", func() {
+	// --- UI Components ---
+
+	cbtn := widget.NewButton("Clear", nf)
+	wbtn := widget.NewButton("Get Web", wf)
+	fbtn := widget.NewButton("Find", ff)
+	ibtn := widget.NewButton("ID Search", func() {
 		rid, er := strconv.Atoi(fnd.Text)
-		if err(er) {
+		if checkError(er) {
 			return
 		}
 		idf(rid)
 	})
-	sbtn := widget.NewButton("Save data", func() {
-		sf()
-	})
-	xbtn := widget.NewButton("Export data", func() {
-		xf()
-	})
+	sbtn := widget.NewButton("Save", sf)
+	xbtn := widget.NewButton("Export", xf)
 
-	// create menubar function
-	createMenuBar := func() *fyne.MainMenu {
-		return fyne.NewMainMenu(
-			fyne.NewMenu("File",
-				fyne.NewMenuItem("New", func() {
-					nf()
-				}),
-				fyne.NewMenuItem("Get Web", func() {
-					wf()
-				}),
-				fyne.NewMenuItem("Find", func() {
-					ff()
-				}),
-				fyne.NewMenuItem("Save", func() {
-					sf()
-				}),
-				fyne.NewMenuItem("Export", func() {
-					xf()
-				}),
-				fyne.NewMenuItem("Change Theme", func() {
-					cf()
-				}),
-				fyne.NewMenuItem("Quit", func() {
-					qf()
-				}),
-		  ),
-			fyne.NewMenu("Edit",
-				fyne.NewMenuItem("Cut", func() {
-					edit.TypedShortcut(&fyne.ShortcutCut{
-						Clipboard: w.Clipboard()})
-					inf.SetText("Cut text.")
-				}),
-				fyne.NewMenuItem("Copy", func() {
-					edit.TypedShortcut(
-						&fyne.ShortcutCopy{
-							Clipboard: w.Clipboard()})
-					inf.SetText("Copy text.")
-				}),
-				fyne.NewMenuItem("Paste", func() {
-					edit.TypedShortcut(&fyne.ShortcutPaste{
-						Clipboard: w.Clipboard()})
-					inf.SetText("Paste text.")
-				}),
-			),
-		)
-	}
+	// Menu
+	fileMenu := fyne.NewMenu("File",
+		fyne.NewMenuItem("New", nf),
+		fyne.NewMenuItem("Save", sf),
+		fyne.NewMenuItem("Export", xf),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Quit", func() { a.Quit() }),
+	)
+	themeMenu := fyne.NewMenu("View",
+		fyne.NewMenuItem("Toggle Theme", cf),
+	)
+	w.SetMainMenu(fyne.NewMainMenu(fileMenu, themeMenu))
 
-	// create toolbar function
-	createToolBar := func() *widget.Toolbar {
-		return widget.NewToolbar(
-			widget.NewToolbarAction(
-				theme.DocumentCreateIcon(), func() {
-					nf()
-				}),
-			widget.NewToolbarAction(
-				theme.NavigationNextIcon(), func() {
-					wf()
-				}),
-		)
-	}
+	// Toolbar
+	tb := widget.NewToolbar(
+		widget.NewToolbarAction(theme.DocumentCreateIcon(), nf),
+		widget.NewToolbarAction(theme.SearchIcon(), ff),
+		widget.NewToolbarAction(theme.DocumentSaveIcon(), sf),
+	)
+
+	// Layout
+	header := container.NewVBox(
+		tb,
+		widget.NewForm(widget.NewFormItem("URL/ID/Title", fnd)),
+		container.NewHBox(cbtn, wbtn, fbtn, ibtn, sbtn, xbtn),
+	)
+
+	content := container.New(layout.NewBorderLayout(header, inf, nil, nil),
+		header, inf, sc)
+
+	w.SetContent(content)
+	w.Resize(fyne.NewSize(600, 600))
+	w.ShowAndRun()
 }
