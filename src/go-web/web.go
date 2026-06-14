@@ -46,12 +46,28 @@ func index(w http.ResponseWriter, rq *http.Request, tmp *template.Template) {
 	}
 }
 
+var flg bool = true
+
 // hello handler
 func hello(w http.ResponseWriter, rq *http.Request, tmp *template.Template) {
-	er := tmp.Execute(w, nil)
+
+	item := struct{
+		Flg bool
+		Title string
+		Message string
+		JMessage string
+	}{
+		Flg: flg,
+		Title: "Send values",
+		Message: "This is Sample message.",
+		JMessage: "これはサンプルです",
+	}
+
+	er := tmp.Execute(w, item)
 	if er != nil {
 		log.Fatal(er)
 	}
+	flg = !flg
 }
 
 func main() {
