@@ -51,16 +51,16 @@ var flg bool = true
 // hello handler
 func hello(w http.ResponseWriter, rq *http.Request, tmp *template.Template) {
 
+	id := rq.FormValue("id")
+	nm := rq.FormValue("name")
+	msg := "id: " + id + ", Name: " + nm
+
 	item := struct{
-		Flg bool
 		Title string
 		Message string
-		JMessage string
 	}{
-		Flg: flg,
 		Title: "Send values",
-		Message: "This is Sample message.",
-		JMessage: "これはサンプルです",
+		Message: msg,
 	}
 
 	er := tmp.Execute(w, item)
